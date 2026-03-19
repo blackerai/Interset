@@ -1,0 +1,6 @@
+.gocache/
+.gomodcache/
+app.exe
+*.exe
+*.test
+*.out
