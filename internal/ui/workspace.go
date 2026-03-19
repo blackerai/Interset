@@ -21,6 +21,7 @@ type WorkspaceProps struct {
 	SidebarIndex  int
 	Tabs          []session.Tab
 	ActiveSession *session.Session
+	ActiveOutput  []string
 	ActiveProfile string
 	StatusNote    string
 	SpinnerFrame  string
@@ -36,10 +37,8 @@ type layoutMode struct {
 }
 
 func RenderWorkspace(props WorkspaceProps) string {
-	s := Theme()
-
 	if props.Width < 44 || props.Height < 14 {
-		return s.App.Render("Interset needs a slightly larger terminal window.")
+		return "Interset needs a slightly larger terminal window."
 	}
 
 	layout := resolveLayout(props.Width, props.ShowSidebar)
@@ -56,7 +55,7 @@ func RenderWorkspace(props WorkspaceProps) string {
 	}
 
 	status := renderStatusBar(props, props.Width)
-	return s.App.Width(props.Width).Height(props.Height).Render(lipgloss.JoinVertical(lipgloss.Left, body, status))
+	return body + "\n" + status
 }
 
 func renderHome(props WorkspaceProps, layout layoutMode, height int) string {
@@ -71,7 +70,7 @@ func renderHome(props WorkspaceProps, layout layoutMode, height int) string {
 	}
 
 	sidebar := renderSidebar(props, layout.sidebarWidth, height, layout)
-	return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, home)
+	return joinColumns(sidebar, home, layout.sidebarWidth, mainWidth, height)
 }
 
 func renderWorkspaceMode(props WorkspaceProps, layout layoutMode, height int) string {
@@ -84,50 +83,38 @@ func renderWorkspaceMode(props WorkspaceProps, layout layoutMode, height int) st
 	contentHeight := max(height-tabsHeight, 1)
 	tabs := renderTabs(props.Tabs, mainWidth, tabsHeight, layout)
 	sessionView := renderSessionPanel(props, mainWidth, contentHeight, layout)
-	main := lipgloss.JoinVertical(lipgloss.Left, tabs, sessionView)
+	main := tabs + "\n" + sessionView
 
 	if !layout.inlineSidebar {
 		return main
 	}
 
 	sidebar := renderSidebar(props, layout.sidebarWidth, height, layout)
-	return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main)
+	return joinColumns(sidebar, main, layout.sidebarWidth, mainWidth, height)
 }
 
 func renderHomePanel(props WorkspaceProps, width, height int, layout layoutMode) string {
-	s := Theme()
-
 	subtitle := "A premium multi-CLI workstation for AI and developer tooling"
 	if layout.minimal {
 		subtitle = "Multi-CLI workstation"
 	}
 
 	selected := selectedProviderLabel(props)
-	heroLines := renderHeroLines(width - 4)
-	actions := []string{
-		"Enter open provider",
-		"Ctrl+T new session",
-		"Ctrl+B toggle sidebar",
-		"Q quit",
-	}
+	lines := make([]string, 0, 20)
+	lines = append(lines, renderHeroLines(width)...)
+	lines = append(lines, "")
+	lines = append(lines, centerText(fitText(subtitle, width), width))
+	lines = append(lines, "")
+	lines = append(lines, centerText("Selected provider: "+fitText(selected, max(width-20, 8)), width))
+	lines = append(lines, "")
+	lines = append(lines, centerText(renderActions(), width))
+	lines = append(lines, "")
+	lines = append(lines, renderProviderDeck(props, layout, width)...)
 
-	lines := make([]string, 0, 16)
-	lines = append(lines, heroLines...)
-	lines = append(lines, "")
-	lines = append(lines, renderCenteredStyledLine(s.Muted, fitText(subtitle, max(width-8, 20)), width-4))
-	lines = append(lines, "")
-	lines = append(lines, renderCenteredStyledLine(s.Accent, "Selected provider: "+fitText(selected, max(width-26, 8)), width-4))
-	lines = append(lines, "")
-	lines = append(lines, renderCenteredStyledLine(s.Text, renderPills(actions), width-4))
-	lines = append(lines, "")
-	lines = append(lines, renderProviderDeck(props, layout, width-8)...)
-
-	return s.HomeBox.Width(width).Height(height).Render(renderCenteredBlock(lines, width-4, height-2))
+	return renderCenteredBlock(lines, width, height)
 }
 
 func renderSidebar(props WorkspaceProps, width, height int, layout layoutMode) string {
-	s := Theme()
-
 	title := "PROVIDERS"
 	subtitle := "ready to launch"
 	if layout.dedicatedPanel {
@@ -136,41 +123,35 @@ func renderSidebar(props WorkspaceProps, width, height int, layout layoutMode) s
 	}
 
 	lines := []string{
-		s.SidebarTitle.Render(title),
-		s.Muted.Render(subtitle),
+		title,
+		subtitle,
 		"",
 	}
 
 	for i, provider := range props.Providers {
-		lines = append(lines, renderSidebarRow(provider, i == props.SidebarIndex, width-4, props.SpinnerFrame))
+		lines = append(lines, renderSidebarRow(provider, i == props.SidebarIndex, width-2, props.SpinnerFrame))
 	}
 
 	if !layout.minimal {
 		lines = append(lines, "")
-		lines = append(lines, s.Muted.Render(fitText("up/down select   enter open   ctrl+b toggle", max(width-4, 12))))
+		lines = append(lines, fitText("up/down select  enter open  ctrl+b toggle", max(width-2, 12)))
 	}
 
-	content := strings.Join(lines, "\n")
-	return s.SidebarBox.Width(width).Height(height).Render(lipgloss.Place(width-2, height-2, lipgloss.Left, lipgloss.Top, content))
+	return renderTopBlock(lines, width, height, true)
 }
 
 func renderSidebarRow(provider registry.Provider, active bool, width int, spinnerFrame string) string {
-	s := Theme()
-
 	status := providerStatusText(provider, spinnerFrame)
-	leftWidth := max(width-len(status)-3, 8)
-	label := fitText(provider.DisplayName, leftWidth)
-	row := padRight(provider.Symbol+" "+label, leftWidth+4) + status
-
+	prefix := "  "
 	if active {
-		return s.SidebarItemActive.Width(width).Render(fitText(row, width))
+		prefix = "> "
 	}
-	return s.SidebarItem.Width(width).Render(fitText(row, width))
+	leftWidth := max(width-len(status)-len(prefix)-1, 8)
+	label := fitText(provider.DisplayName, leftWidth)
+	return fitText(prefix+padRight(provider.Symbol+" "+label, leftWidth+2)+" "+status, width)
 }
 
 func renderTabs(tabs []session.Tab, width, height int, layout layoutMode) string {
-	s := Theme()
-
 	pieces := []string{"tabs"}
 	if len(tabs) == 0 {
 		pieces = append(pieces, "no sessions")
@@ -182,36 +163,34 @@ func renderTabs(tabs []session.Tab, width, height int, layout layoutMode) string
 		for _, tab := range tabs {
 			label := fitText(tab.Title, labelWidth)
 			if tab.Active {
-				pieces = append(pieces, s.TabActive.Render(label))
+				pieces = append(pieces, "["+label+"]")
 			} else {
-				pieces = append(pieces, s.Tab.Render(label))
+				pieces = append(pieces, label)
 			}
 		}
 	}
-	pieces = append(pieces, s.TabGhost.Render("+"))
+	pieces = append(pieces, "+")
 
-	row := fitText(strings.Join(pieces, "  "), max(width-4, 12))
+	row := fitText(strings.Join(pieces, "  "), max(width, 12))
 	help := "ctrl+t new  ctrl+w close  tab next  shift+tab prev"
 	if layout.compact {
 		help = "ctrl+t new  ctrl+w close"
 	}
-	lines := []string{
-		s.Muted.Render(row),
-		s.Muted.Render(fitText(help, max(width-4, 12))),
-	}
 
-	return s.TabsBox.Width(width).Height(height).Render(renderFixedLines(lines, width-2, height-2))
+	lines := []string{
+		row,
+		fitText(help, max(width, 12)),
+		strings.Repeat("-", min(width, 80)),
+	}
+	return renderTopBlock(lines, width, height, false)
 }
 
 func renderSessionPanel(props WorkspaceProps, width, height int, layout layoutMode) string {
-	s := Theme()
-
+	lines := make([]string, 0, 14)
 	if props.ActiveSession == nil {
-		lines := []string{
-			s.Title.Render("No live session yet"),
-			s.Muted.Render("Open a provider to start."),
-		}
-		return s.SessionBox.Width(width).Height(height).Render(renderFixedLines(lines, width-4, height-2))
+		lines = append(lines, "No live session yet")
+		lines = append(lines, "Open a provider to start.")
+		return renderTopBlock(lines, width, height, false)
 	}
 
 	active := props.ActiveSession
@@ -220,44 +199,51 @@ func renderSessionPanel(props WorkspaceProps, width, height int, layout layoutMo
 		header = fmt.Sprintf("%s  %s  profile:%s", strings.ToUpper(active.ProviderID), active.Cwd, active.MCPProfile)
 	}
 
-	lines := []string{
-		s.Title.Render(fitText(active.Title, max(width-6, 12))),
-		s.Muted.Render(fitText(header, max(width-6, 12))),
-		"",
-		s.Accent.Render("$ session viewport"),
-		"",
-		s.Text.Render(fitText("This pane is now reserved for the real PTY session viewport.", max(width-6, 12))),
-		s.Text.Render(fitText("The shell no longer hardcodes a provider on startup.", max(width-6, 12))),
-		"",
-		s.Muted.Render("Session actions"),
-		s.Text.Render("Enter from home or sidebar opens a provider"),
-		s.Text.Render("Ctrl+T creates a new session from the selected provider"),
-		s.Text.Render("Ctrl+W closes the current tab"),
+	lines = append(lines, fitText(active.Title, width))
+	lines = append(lines, fitText(header, width))
+	lines = append(lines, fitText("status: "+string(active.Status), width))
+	if len(active.LaunchCommand) > 0 {
+		lines = append(lines, fitText("command: "+strings.Join(active.LaunchCommand, " "), width))
+	}
+	if active.LastError != "" {
+		lines = append(lines, fitText("error: "+active.LastError, width))
+	}
+	lines = append(lines, "")
+
+	if len(props.ActiveOutput) == 0 {
+		lines = append(lines, "$ waiting for session output")
+		lines = append(lines, "")
+		lines = append(lines, fitText("Type directly in this pane to send input to the active session.", width))
+		lines = append(lines, fitText("Ctrl+R restarts the current runtime and Ctrl+W closes the tab.", width))
+		if !layout.minimal {
+			lines = append(lines, fitText("Providers open from the home screen or sidebar and stay alive per tab.", width))
+		}
+		return renderTopBlock(lines, width, height, false)
 	}
 
-	if !layout.minimal {
-		lines = append(lines, s.Text.Render("Ctrl+B toggles the provider surface"))
-		lines = append(lines, s.Text.Render("Q exits Interset"))
+	lines = append(lines, "$ live session")
+	lines = append(lines, "")
+	for _, line := range props.ActiveOutput {
+		lines = append(lines, fitText(line, width))
 	}
 
-	return s.SessionBox.Width(width).Height(height).Render(renderFixedLines(lines, width-4, height-2))
+	return renderTopBlock(lines, width, height, false)
 }
 
 func renderStatusBar(props WorkspaceProps, width int) string {
-	s := Theme()
-
 	provider := selectedProviderLabel(props)
+	profile := props.ActiveProfile
 	status := "ready"
 	if props.ActiveSession != nil {
 		provider = props.ActiveSession.ProviderID
+		profile = props.ActiveSession.MCPProfile
 		status = string(props.ActiveSession.Status)
 	}
 
-	left := fmt.Sprintf(" %s | %s | %s | %s ", props.Mode, provider, props.ActiveProfile, status)
+	left := fmt.Sprintf(" %s | %s | %s | %s ", props.Mode, provider, profile, status)
 	right := fmt.Sprintf(" %s | %s ", fitText(props.StatusNote, 28), props.Uptime)
-	gap := max(width-lipgloss.Width(stripANSI(left))-lipgloss.Width(stripANSI(right))-2, 1)
-
-	return s.StatusBar.Width(width).Render(left + strings.Repeat(" ", gap) + right)
+	gap := max(width-len(left)-len(right), 1)
+	return left + strings.Repeat(" ", gap) + right
 }
 
 func renderProviderDeck(props WorkspaceProps, layout layoutMode, width int) []string {
@@ -265,26 +251,21 @@ func renderProviderDeck(props WorkspaceProps, layout layoutMode, width int) []st
 		return []string{}
 	}
 
-	s := Theme()
-	lines := []string{renderCenteredStyledLine(s.Muted, "Providers", width)}
+	lines := []string{centerText("Providers", width)}
 	for i, provider := range props.Providers {
-		text := fitText(provider.DisplayName, max(width-10, 8))
-		style := s.Pill
+		text := provider.DisplayName
 		if i == props.SidebarIndex {
-			style = s.PillActive
+			text = "> " + text
 		}
-		lines = append(lines, renderCenteredStyledLine(style, text, width))
+		lines = append(lines, centerText(fitText(text, width), width))
 		if layout.minimal && i >= 2 {
 			break
 		}
 	}
-
 	return lines
 }
 
 func renderHeroLines(width int) []string {
-	s := Theme()
-
 	hero := []string{
 		" ___       _                       _   ",
 		"|_ _|_ __ | |_ ___ _ __ ___  ___ | |_ ",
@@ -294,41 +275,22 @@ func renderHeroLines(width int) []string {
 	}
 
 	if width < 54 {
-		return []string{renderCenteredStyledLine(s.BrandPrimary, "INTERSET", width)}
+		return []string{centerText("INTERSET", width)}
 	}
 
 	lines := make([]string, 0, len(hero))
-	for i, line := range hero {
-		style := s.BrandPrimary
-		if i == 1 || i == 3 {
-			style = s.BrandSecondary
-		}
-		lines = append(lines, renderCenteredStyledLine(style, line, width))
+	for _, line := range hero {
+		lines = append(lines, centerText(line, width))
 	}
-
 	return lines
 }
 
-func renderPills(items []string) string {
-	s := Theme()
-
-	rendered := make([]string, 0, len(items))
-	for i, item := range items {
-		style := s.Pill
-		if i == 0 {
-			style = s.PillActive
-		}
-		rendered = append(rendered, style.Render(item))
-	}
-
-	return strings.Join(rendered, "  ")
+func renderActions() string {
+	return "Enter open provider  Ctrl+T new session  Ctrl+B toggle sidebar  Q quit"
 }
 
 func resolveLayout(width int, showSidebar bool) layoutMode {
-	mode := layoutMode{
-		sidebarWidth: 26,
-	}
-
+	mode := layoutMode{sidebarWidth: 26}
 	switch {
 	case width >= 120:
 		mode.inlineSidebar = showSidebar
@@ -341,7 +303,6 @@ func resolveLayout(width int, showSidebar bool) layoutMode {
 		mode.minimal = true
 		mode.dedicatedPanel = showSidebar
 	}
-
 	return mode
 }
 
@@ -364,6 +325,8 @@ func providerStatusText(provider registry.Provider, spinnerFrame string) string 
 		return spinnerFrame + " start"
 	case registry.StatusBusy:
 		return spinnerFrame + " busy"
+	case registry.StatusExited:
+		return "exit"
 	case registry.StatusAuthRequired:
 		return "auth"
 	case registry.StatusError:
@@ -373,73 +336,6 @@ func providerStatusText(provider registry.Provider, spinnerFrame string) string 
 	default:
 		return "detect"
 	}
-}
-
-func renderFixedLines(lines []string, width, height int) string {
-	if width < 1 || height < 1 {
-		return ""
-	}
-
-	out := make([]string, 0, height)
-	for _, line := range lines {
-		if len(out) == height {
-			break
-		}
-		raw := stripANSI(line)
-		text := fitText(raw, width)
-		padding := max(width-lipgloss.Width(text), 0)
-		text += strings.Repeat(" ", padding)
-		if line != raw {
-			text = strings.Replace(line, raw, text, 1)
-		}
-		out = append(out, text)
-	}
-
-	for len(out) < height {
-		out = append(out, strings.Repeat(" ", width))
-	}
-
-	return strings.Join(out, "\n")
-}
-
-func fitText(value string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-
-	runes := []rune(stripANSI(value))
-	if len(runes) <= width {
-		return string(runes)
-	}
-	if width <= 3 {
-		return string(runes[:width])
-	}
-	return string(runes[:width-3]) + "..."
-}
-
-func stripANSI(value string) string {
-	var out []rune
-	inANSI := false
-
-	for _, r := range value {
-		if r == '\x1b' {
-			inANSI = true
-			continue
-		}
-		if inANSI {
-			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-				inANSI = false
-			}
-			continue
-		}
-		out = append(out, r)
-	}
-
-	return string(out)
-}
-
-func renderCenteredStyledLine(style lipgloss.Style, text string, width int) string {
-	return style.Width(width).Align(lipgloss.Center).Render(fitText(text, width))
 }
 
 func renderCenteredBlock(lines []string, width, height int) string {
@@ -457,13 +353,91 @@ func renderCenteredBlock(lines []string, width, height int) string {
 		out = append(out, strings.Repeat(" ", width))
 	}
 	for _, line := range lines {
-		out = append(out, line)
+		out = append(out, padRight(fitText(line, width), width))
 	}
 	for len(out) < height {
 		out = append(out, strings.Repeat(" ", width))
 	}
+	return strings.Join(out, "\n")
+}
+
+func renderTopBlock(lines []string, width, height int, divider bool) string {
+	if width < 1 || height < 1 {
+		return ""
+	}
+
+	out := make([]string, 0, height)
+	for _, line := range lines {
+		if len(out) == height {
+			break
+		}
+		text := fitText(line, width)
+		if divider {
+			text = padRight(text, max(width-1, 1)) + verticalDivider()
+		} else {
+			text = padRight(text, width)
+		}
+		out = append(out, text)
+	}
+
+	fill := strings.Repeat(" ", width)
+	if divider {
+		fill = strings.Repeat(" ", max(width-1, 1)) + verticalDivider()
+	}
+	for len(out) < height {
+		out = append(out, fill)
+	}
 
 	return strings.Join(out, "\n")
+}
+
+func joinColumns(left, right string, leftWidth, rightWidth, height int) string {
+	leftLines := strings.Split(left, "\n")
+	rightLines := strings.Split(right, "\n")
+	out := make([]string, 0, height)
+
+	for i := 0; i < height; i++ {
+		l := strings.Repeat(" ", leftWidth)
+		r := strings.Repeat(" ", rightWidth)
+		if i < len(leftLines) {
+			l = leftLines[i]
+		}
+		if i < len(rightLines) {
+			r = rightLines[i]
+		}
+		out = append(out, l+r)
+	}
+
+	return strings.Join(out, "\n")
+}
+
+func centerText(text string, width int) string {
+	trimmed := fitText(text, width)
+	visibleWidth := lipgloss.Width(trimmed)
+	if visibleWidth >= width {
+		return trimmed
+	}
+	left := (width - visibleWidth) / 2
+	right := width - visibleWidth - left
+	return strings.Repeat(" ", left) + trimmed + strings.Repeat(" ", right)
+}
+
+func verticalDivider() string {
+	return "|"
+}
+
+func fitText(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= width {
+		return value
+	}
+	if width <= 3 {
+		return string(runes[:width])
+	}
+	return string(runes[:width-3]) + "..."
 }
 
 func padRight(value string, width int) string {
@@ -472,6 +446,13 @@ func padRight(value string, width int) string {
 		return value
 	}
 	return value + strings.Repeat(" ", gap)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func max(a, b int) int {

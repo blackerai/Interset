@@ -103,7 +103,6 @@ func Theme() Styles {
 		Error: lipgloss.NewStyle().
 			Foreground(palette.Error),
 		SidebarBox: lipgloss.NewStyle().
-			Background(palette.Panel).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderRight(true).
 			BorderLeft(false).
@@ -118,11 +117,10 @@ func Theme() Styles {
 			Foreground(palette.Text).
 			Padding(0, 1),
 		SidebarItemActive: lipgloss.NewStyle().
-			Foreground(palette.Text).
-			Background(palette.SidebarActive).
+			Foreground(palette.BlueSoft).
+			Bold(true).
 			Padding(0, 1),
 		TabsBox: lipgloss.NewStyle().
-			Background(palette.Panel).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderBottom(true).
 			BorderTop(false).
@@ -131,22 +129,15 @@ func Theme() Styles {
 			BorderForeground(palette.Divider).
 			Padding(0, 1),
 		Tab: lipgloss.NewStyle().
-			Background(palette.Elevated).
-			Foreground(palette.Muted).
-			Padding(0, 1),
+			Foreground(palette.Muted),
 		TabActive: lipgloss.NewStyle().
-			Background(palette.SidebarActive).
-			Foreground(palette.Text).
-			Bold(true).
-			Padding(0, 1),
+			Foreground(palette.BlueSoft).
+			Bold(true),
 		TabGhost: lipgloss.NewStyle().
-			Foreground(palette.Muted).
-			Padding(0, 1),
+			Foreground(palette.Muted),
 		SessionBox: lipgloss.NewStyle().
-			Background(palette.Panel).
 			Padding(1, 2),
 		HomeBox: lipgloss.NewStyle().
-			Background(palette.Panel).
 			Padding(1, 2),
 		StatusBar: lipgloss.NewStyle().
 			Background(palette.Elevated).
